@@ -272,7 +272,7 @@
               <!-- 委託簽章 -->
               <div>
                 <div class="text-slate-400 font-semibold mb-1 text-[11px]">委託簽章</div>
-                <div @click="!isClientMode && openSignModal('commissioner')" :class="!isClientMode ? 'cursor-pointer hover:border-blue-400' : ''" class="border border-slate-300 rounded h-16 flex justify-center items-center bg-slate-50 relative overflow-hidden group">
+                <div @click="!isClientMode && openSignModal('commissioner')" :class="!isClientMode ? 'cursor-pointer hover:border-blue-400' : ''" class="border border-slate-300 rounded h-16 flex justify-center items-center bg-white relative overflow-hidden group">
                   <img v-if="estimate.commissionerSign" :src="estimate.commissionerSign" class="max-h-full max-w-full object-contain p-1">
                   <span v-else class="text-[10px] text-slate-400">{{ isClientMode ? '未簽署' : '點擊設定簽名' }}</span>
                 </div>
@@ -280,7 +280,7 @@
               <!-- 公司章 -->
               <div>
                 <div class="text-slate-400 font-semibold mb-1 text-[11px]">公司章/發票章</div>
-                <div @click="!isClientMode && openSignModal('company')" :class="!isClientMode ? 'cursor-pointer hover:border-blue-400' : ''" class="border border-slate-300 rounded h-16 flex justify-center items-center bg-slate-50 relative overflow-hidden group">
+                <div @click="!isClientMode && openSignModal('company')" :class="!isClientMode ? 'cursor-pointer hover:border-blue-400' : ''" class="border border-slate-300 rounded h-16 flex justify-center items-center bg-white relative overflow-hidden group">
                   <img v-if="estimate.companySign" :src="estimate.companySign" class="max-h-full max-w-full object-contain p-1">
                   <span v-else class="text-[10px] text-slate-400">{{ isClientMode ? '未蓋章' : '點擊設定印章' }}</span>
                 </div>
@@ -288,7 +288,7 @@
               <!-- 客戶簽章 -->
               <div>
                 <div class="text-slate-400 font-semibold mb-1 text-[11px]">客戶簽章確認</div>
-                <div class="border border-slate-300 rounded h-16 flex justify-center items-center bg-slate-50">
+                <div class="border border-slate-300 rounded h-16 flex justify-center items-center bg-white">
                   <span class="text-[10px] text-slate-400">待客戶確認簽署</span>
                 </div>
               </div>

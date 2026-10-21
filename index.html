@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>專案報價系統</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    [v-cloak] { display: none !important; }
+    body { font-family: 'Inter', 'Noto Sans TC', sans-serif; }
+    
+    /* 嚴格 A4 尺寸限制 */
+    .a4-sheet {
+      width: 210mm;
+      min-width: 210mm;
+      max-width: 210mm;
+      height: 297mm;
+      min-height: 297mm;
+      max-height: 297mm;
+      box-sizing: border-box;
+      overflow: hidden; /* 強制隱藏超出的內容，避免產生第二頁 */
+      background: white;
+      margin: 0 auto;
+      position: relative;
+    }
+
+    @media print {
+      .no-print { display: none !important; }
+      body { background-color: white !important; margin: 0 !important; padding: 0 !important; }
+      .a4-sheet { box-shadow: none !important; border: none !important; margin: 0 !important; }
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 antialiased min-h-screen flex flex-col">
+
+<div id="app" v-cloak class="flex-1 flex flex-col">
+
+  <!-- ================= 管理者頂部導覽列 (#001B71) ================= -->
+  <header v-if="!isClientMode" class="no-print bg-[#001B71] text-white px-6 py-3 flex items-center justify-between shadow-md z-40 relative">
+    <div class="flex items-center gap-4">
+      <!-- 左上角 Logo 上傳 -->
+      <div @click="$refs.topLogoInput.click()" class="cursor-pointer group flex items-center gap-2 bg-white/10 px-3 py-1.5 rounded-lg border border-white/20 hover:bg-white/20 transition">
+        <img v-if="topLogoUrl" :src="topLogoUrl" class="h-6 object-contain max-w-[120px]" alt="Top Logo">
+        <span v-else class="font-bold tracking-wider text-base">專案報價系統</span>
+        <span class="text-[10px] bg-white/20 px-1.5 py-0.5 rounded text-white/80 group-hover:bg-white/40">更換</span>
+      </div>
+      <input type="file" ref="topLogoInput" @change="handleTopLogoUpload" accept="image/*" class="hidden">
+
+      <nav class="hidden sm:flex space-x-1 bg-black/20 p-1 rounded-lg text-xs">
+        <button @click="currentView = 'dashboard'" :class="currentView === 'dashboard' ? 'bg-white text-[#001B71] font-bold' : 'text-blue-100 hover:text-white'" class="px-3 py-1.5 rounded transition">看板</button>
+        <button @click="currentView = 'estimate'" :class="currentView === 'estimate' ? 'bg-white text-[#001B71] font-bold' : 'text-blue-100 hover:text-white'" class="px-3 py-1.5 rounded transition">A4 報價單</button>
+      </nav>
+    </div>
+
+    <!-- 右上角品牌 Logo 上傳 -->
+    <div class="flex items-center">
+      <div @click="$refs.headerRightLogoInput.click()" class="cursor-pointer bg-white px-3 py-1 rounded-xl shadow-sm border border-white/40 hover:opacity-90 transition h-9 flex items-center">
+        <img v-if="headerRightLogoUrl" :src="headerRightLogoUrl" class="h-6 object-contain" alt="Right Logo">
+        <span v-else class="text-xs font-bold text-[#001B71]">點擊設定右上角 Logo</span>
+      </div>
+      <input type="file" ref="headerRightLogoInput" @change="handleHeaderRightLogoUpload" accept="image/*" class="hidden">
+    </div>
+  </header>
+
+  <!-- ================= 客戶專用頂部列 (只有一個下載按鈕) ================= -->
+  <header v-else class="no-print bg-white border-b border-slate-200 px-6 py-3.5 flex items-center justify-between shadow-sm sticky top-0 z-40">
+    <div class="flex items-center gap-3">
+      <img v-if="headerRightLogoUrl" :src="headerRightLogoUrl" class="h-6 object-contain" alt="Logo">
+      <span class="font-bold text-slate-800 text-sm border-l border-slate-300 pl-3">專案報價確認單</span>
+    </div>
+    <!-- 唯一按鈕 -->
+    <button @click="downloadA4PDF" class="px-5 py-2 text-xs font-bold text-white bg-[#001B71] hover:bg-blue-900 rounded-lg shadow transition flex items-center gap-1.5">
+      📥 下載 A4 報價單 PDF
+    </button>
+  </header>
+
+  <!-- 提示訊息 -->
+  <div v-if="toastMsg" class="no-print fixed top-16 right-6 z-50 bg-slate-800 text-white text-xs px-4 py-3 rounded-lg shadow-xl flex items-center gap-2">
+    <span>{{ toastMsg }}</span>
+  </div>
+
+  <main class="flex-1 max-w-6xl mx-auto py-6 px-4 w-full">
+
+    <!-- ================= 檢視：專案看板 (僅管理者) ================= -->
+    <div v-if="currentView === 'dashboard' && !isClientMode" class="space-y-6">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+          <div class="text-xs text-slate-500 font-medium">專案總金額</div>
+          <div class="text-2xl font-bold text-amber-500 mt-2">NT$ {{ grandTotal.toLocaleString() }}</div>
+        </div>
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+          <div class="text-xs text-slate-500 font-medium">收款狀況</div>
+          <div class="text-2xl font-bold text-slate-800 mt-2">NT$ 0</div>
+          <div class="w-full bg-slate-100 h-1.5 rounded-full mt-3"><div class="bg-emerald-500 h-full w-0"></div></div>
+        </div>
+      </div>
+      
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6 max-w-3xl">
+        <h2 class="text-base font-bold text-slate-800 mb-4">近期報價單</h2>
+        <div @click="currentView = 'estimate'" class="p-4 rounded-xl border border-slate-200 hover:border-blue-400 cursor-pointer flex justify-between items-center bg-slate-50 transition">
+          <div>
+            <div class="font-bold text-slate-900">{{ estimate.projectTitle }}</div>
+            <div class="text-xs text-amber-600 font-medium mt-1">狀態：{{ estimate.status }}</div>
+          </div>
+          <div class="text-right">
+            <div class="text-base font-bold text-amber-600">NT$ {{ grandTotal.toLocaleString() }}</div>
+            <div class="text-xs text-slate-400 mt-1">點擊進入編輯 ↗</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= 檢視：A4 報價單 ================= -->
+    <div v-if="currentView === 'estimate'" class="space-y-4">
+      
+      <!-- 管理者專屬工具列 -->
+      <div v-if="!isClientMode" class="no-print flex flex-wrap items-center justify-between bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+        <div class="flex items-center gap-3">
+          <span class="text-xs font-semibold text-slate-700">狀態：</span>
+          <select v-model="estimate.status" class="text-xs border border-slate-300 rounded px-2 py-1 outline-none">
+            <option>等待回覆</option><option>已接受</option><option>草稿</option>
+          </select>
+        </div>
+        <div class="flex items-center gap-2">
+          <!-- 複製客戶連結 (Hash打包) -->
+          <button @click="copyClientLink" class="px-3.5 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition">
+            🔗 分享連結
+          </button>
+          <button @click="isEditing = !isEditing" :class="isEditing ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-700'" class="px-3.5 py-1.5 text-xs font-medium rounded-lg transition">
+            {{ isEditing ? '✔ 完成編輯' : '✎ 編輯內容' }}
+          </button>
+          <button @click="downloadA4PDF" class="px-4 py-1.5 text-xs font-medium text-white bg-[#001B71] rounded-lg shadow-sm hover:bg-blue-900 transition">
+            📥 下載 PDF
+          </button>
+        </div>
+      </div>
+
+      <!-- A4 畫布區塊 (精準 210x297mm) -->
+      <div class="flex justify-center pb-8 overflow-x-auto">
+        <div id="pdf-container" class="a4-sheet p-10 flex flex-col justify-between border border-slate-200 shadow-xl">
+          
+          <div>
+            <!-- 表頭區 -->
+            <div class="flex justify-between items-start pb-4 border-b border-slate-200">
+              <div class="relative group" :class="!isClientMode ? 'cursor-pointer' : ''" @click="!isClientMode && $refs.estimateLogoInput.click()">
+                <img v-if="estimateLogoUrl" :src="estimateLogoUrl" class="h-10 object-contain" alt="Estimate Logo">
+                <div v-else class="text-xl font-bold text-slate-400">點擊上傳報價單 Logo</div>
+                <div v-if="!isClientMode && estimateLogoUrl" class="no-print absolute text-[9px] text-blue-500 top-full mt-1">點擊更換</div>
+              </div>
+              <input v-if="!isClientMode" type="file" ref="estimateLogoInput" @change="handleEstimateLogoUpload" accept="image/*" class="hidden">
+
+              <div class="text-xs text-slate-600 flex items-center">
+                日期：
+                <span v-if="isClientMode || !isEditing" class="ml-1 font-medium">{{ estimate.issueDate }}</span>
+                <input v-else type="text" v-model="estimate.issueDate" class="ml-1 w-24 text-right border-b border-blue-400 bg-blue-50 outline-none">
+              </div>
+            </div>
+
+            <!-- 主標題 -->
+            <div class="text-center my-5">
+              <div v-if="isClientMode || !isEditing" class="text-lg font-bold text-slate-900">{{ estimate.projectTitle }}</div>
+              <input v-else type="text" v-model="estimate.projectTitle" class="text-lg font-bold text-slate-900 text-center w-full border-b border-blue-400 bg-blue-50 outline-none">
+            </div>
+
+            <!-- 甲乙方資訊 -->
+            <div class="grid grid-cols-2 gap-8 text-xs pb-5 border-b border-slate-200">
+              <div class="space-y-1">
+                <div class="text-slate-400 font-semibold mb-1 text-[11px]">委託 (乙方)</div>
+                <div v-if="isClientMode || !isEditing" class="space-y-0.5 text-slate-600">
+                  <div class="font-bold text-slate-800">{{ estimate.commissioner }}</div>
+                  <div>{{ estimate.commissionerName }}</div>
+                  <div>{{ estimate.commissionerEmail }}</div>
+                  <div>{{ estimate.commissionerPhone }}</div>
+                </div>
+                <div v-else class="space-y-1">
+                  <input type="text" v-model="estimate.commissioner" class="w-full border-b border-blue-400 bg-blue-50 font-bold outline-none">
+                  <input type="text" v-model="estimate.commissionerName" class="w-full border-b border-blue-400 bg-blue-50 outline-none">
+                  <input type="text" v-model="estimate.commissionerEmail" class="w-full border-b border-blue-400 bg-blue-50 outline-none">
+                  <input type="text" v-model="estimate.commissionerPhone" class="w-full border-b border-blue-400 bg-blue-50 outline-none">
+                </div>
+              </div>
+              <div class="space-y-1">
+                <div class="text-slate-400 font-semibold mb-1 text-[11px]">客戶 (甲方)</div>
+                <div v-if="isClientMode || !isEditing" class="space-y-0.5 text-slate-600">
+                  <div class="font-bold text-slate-800">{{ estimate.clientCompany }}</div>
+                  <div>{{ estimate.clientContact }}</div>
+                  <div>{{ estimate.clientEmail }}</div>
+                  <div>{{ estimate.clientPhone }}</div>
+                </div>
+                <div v-else class="space-y-1">
+                  <input type="text" v-model="estimate.clientCompany" class="w-full border-b border-blue-400 bg-blue-50 font-bold outline-none">
+                  <input type="text" v-model="estimate.clientContact" class="w-full border-b border-blue-400 bg-blue-50 outline-none">
+                  <input type="text" v-model="estimate.clientEmail" class="w-full border-b border-blue-400 bg-blue-50 outline-none">
+                  <input type="text" v-model="estimate.clientPhone" class="w-full border-b border-blue-400 bg-blue-50 outline-none">
+                </div>
+              </div>
+            </div>
+
+            <!-- 報價明細 -->
+            <div class="py-4">
+              <table class="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr class="border-b border-slate-300 text-slate-400">
+                    <th class="py-1.5 w-1/4">項目</th>
+                    <th class="py-1.5 w-2/5">說明</th>
+                    <th class="py-1.5 text-center w-12">數量</th>
+                    <th class="py-1.5 text-center w-12">單位</th>
+                    <th class="py-1.5 text-right w-20">單價</th>
+                    <th class="py-1.5 text-right w-24">費用</th>
+                    <th v-if="!isClientMode && isEditing" class="no-print py-1.5 w-6"></th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                  <tr v-for="(item, idx) in estimate.items" :key="idx">
+                    <td class="py-2 pr-2">
+                      <span v-if="isClientMode || !isEditing" class="font-medium text-slate-800">{{ item.name }}</span>
+                      <input v-else type="text" v-model="item.name" class="w-full border-b border-blue-400 bg-blue-50 outline-none">
+                    </td>
+                    <td class="py-2 pr-2">
+                      <span v-if="isClientMode || !isEditing" class="text-slate-500 text-[11px]">{{ item.desc }}</span>
+                      <input v-else type="text" v-model="item.desc" class="w-full border-b border-blue-400 bg-blue-50 text-[11px] outline-none">
+                    </td>
+                    <td class="py-2 text-center">
+                      <span v-if="isClientMode || !isEditing">{{ item.qty }}</span>
+                      <input v-else type="number" v-model.number="item.qty" class="w-10 text-center border-b border-blue-400 bg-blue-50 outline-none">
+                    </td>
+                    <td class="py-2 text-center">
+                      <span v-if="isClientMode || !isEditing">{{ item.unit }}</span>
+                      <input v-else type="text" v-model="item.unit" class="w-10 text-center border-b border-blue-400 bg-blue-50 outline-none">
+                    </td>
+                    <td class="py-2 text-right">
+                      <span v-if="isClientMode || !isEditing">{{ item.price.toLocaleString() }}</span>
+                      <input v-else type="number" v-model.number="item.price" class="w-16 text-right border-b border-blue-400 bg-blue-50 outline-none">
+                    </td>
+                    <td class="py-2 text-right font-semibold text-slate-800">
+                      NT$ {{ (item.qty * item.price).toLocaleString() }}
+                    </td>
+                    <td v-if="!isClientMode && isEditing" class="no-print py-2 text-center">
+                      <button @click="estimate.items.splice(idx, 1)" class="text-rose-500 hover:font-bold">×</button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              <div v-if="!isClientMode && isEditing" class="no-print pt-1">
+                <button @click="estimate.items.push({name:'', desc:'', qty:1, unit:'式', price:0})" class="text-[11px] text-blue-600 hover:underline">+ 新增項目</button>
+              </div>
+
+              <!-- 總額計算 -->
+              <div class="flex flex-col items-end pt-3 space-y-0.5 text-xs border-t border-slate-200 mt-2">
+                <div class="flex justify-between w-40 text-slate-600"><span>小計</span><span class="font-semibold">NT$ {{ subtotal.toLocaleString() }}</span></div>
+                <div class="flex justify-between w-40 text-slate-600"><span>稅金</span><span>0%</span></div>
+                <div class="flex justify-between w-40 text-sm font-bold text-slate-900 pt-1 border-t border-slate-200">
+                  <span>總計</span><span class="text-amber-600">NT$ {{ grandTotal.toLocaleString() }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 備註條款 -->
+            <div class="py-3 border-t border-slate-200 text-[10px] text-slate-600">
+              <div class="font-bold text-slate-700 mb-1 text-[11px]">備註與條款</div>
+              <div v-if="isClientMode || !isEditing" class="whitespace-pre-line leading-relaxed">{{ estimate.notes }}</div>
+              <textarea v-else v-model="estimate.notes" rows="4" class="w-full border border-blue-400 bg-blue-50 p-1.5 outline-none"></textarea>
+            </div>
+          </div>
+
+          <!-- 簽章區 -->
+          <div class="pt-3 border-t border-slate-200 text-xs">
+            <div class="grid grid-cols-3 gap-4">
+              <!-- 委託簽章 -->
+              <div>
+                <div class="text-slate-400 font-semibold mb-1 text-[11px]">委託簽章</div>
+                <div @click="!isClientMode && openSignModal('commissioner')" :class="!isClientMode ? 'cursor-pointer hover:border-blue-400' : ''" class="border border-slate-300 rounded h-16 flex justify-center items-center bg-slate-50 relative overflow-hidden group">
+                  <img v-if="estimate.commissionerSign" :src="estimate.commissionerSign" class="max-h-full max-w-full object-contain p-1">
+                  <span v-else class="text-[10px] text-slate-400">{{ isClientMode ? '未簽署' : '點擊設定簽名' }}</span>
+                </div>
+              </div>
+              <!-- 公司章 -->
+              <div>
+                <div class="text-slate-400 font-semibold mb-1 text-[11px]">公司章/發票章</div>
+                <div @click="!isClientMode && openSignModal('company')" :class="!isClientMode ? 'cursor-pointer hover:border-blue-400' : ''" class="border border-slate-300 rounded h-16 flex justify-center items-center bg-slate-50 relative overflow-hidden group">
+                  <img v-if="estimate.companySign" :src="estimate.companySign" class="max-h-full max-w-full object-contain p-1">
+                  <span v-else class="text-[10px] text-slate-400">{{ isClientMode ? '未蓋章' : '點擊設定印章' }}</span>
+                </div>
+              </div>
+              <!-- 客戶簽章 -->
+              <div>
+                <div class="text-slate-400 font-semibold mb-1 text-[11px]">客戶簽章確認</div>
+                <div class="border border-slate-300 rounded h-16 flex justify-center items-center bg-slate-50">
+                  <span class="text-[10px] text-slate-400">待客戶確認簽署</span>
+                </div>
+              </div>
+            </div>
+            <div class="mt-2 text-[10px] text-slate-400">簽署日期：_________________</div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- 簽名 Modal -->
+    <div v-if="showSignModal && !isClientMode" class="no-print fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div class="bg-white rounded-xl max-w-sm w-full p-5 shadow-2xl">
+        <div class="flex justify-between items-center border-b pb-2 mb-3">
+          <h3 class="font-bold text-sm">設定圖片/簽名</h3>
+          <button @click="showSignModal = false" class="text-slate-400 hover:text-slate-600 font-bold text-lg leading-none">×</button>
+        </div>
+        <div class="space-y-4 text-xs">
+          <!-- 上傳 -->
+          <div>
+            <label class="block font-semibold mb-1">上傳圖檔 (PNG/JPG)</label>
+            <input type="file" @change="handleSignImageUpload" accept="image/*" class="w-full file:bg-slate-100 file:border-0 file:py-1 file:px-2 file:rounded cursor-pointer">
+          </div>
+          <div class="border-t pt-3">
+            <label class="block font-semibold mb-1">手寫簽名</label>
+            <canvas ref="signCanvas" @mousedown="startDrawing" @mousemove="draw" @mouseup="stopDrawing" @mouseleave="stopDrawing" @touchstart="startDrawingTouch" @touchmove="drawTouch" @touchend="stopDrawing" class="w-full h-24 border border-slate-300 rounded bg-slate-50 cursor-crosshair touch-none"></canvas>
+            <div class="flex justify-between mt-2">
+              <button @click="clearCanvas" class="text-rose-500">清除</button>
+              <button @click="saveCanvasSign" class="bg-[#001B71] text-white px-3 py-1 rounded">套用</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+const { createApp } = Vue;
+
+createApp({
+  data() {
+    return {
+      currentView: 'estimate',
+      isEditing: false,
+      isClientMode: false,
+      toastMsg: '',
+      topLogoUrl: '',
+      estimateLogoUrl: '',
+      headerRightLogoUrl: '',
+      showSignModal: false,
+      activeSignTarget: '',
+      estimate: {
+        status: '等待回覆',
+        issueDate: '2026年10月21日',
+        projectTitle: '中祥 胡椒蘇打餅-包裝設計',
+        commissioner: '小物設計',
+        commissionerName: '吳承峰',
+        commissionerEmail: 'jisaimono@gmail.com',
+        commissionerPhone: '0935991386',
+        clientCompany: '中祥食品工業股份有限公司',
+        clientContact: 'Queenie',
+        clientEmail: 'queenietwo00@gmail.com',
+        clientPhone: '03-371-3688',
+        commissionerSign: '',
+        companySign: '',
+        clientSign: '',
+        items: [
+          { name: '紙盒包裝設計', desc: '鹿耳門天后宮+新乾+媽祖 視覺設計', qty: 1, unit: '式', price: 15000 }
+        ],
+        notes: '1. 工作範疇：提供版面分層圖檔，最多 3 輪免費修改。\n2. 工作天數：收到素材 3 天內提案，每次修改 3 天內完成。\n3. 匯款：永豐銀行(807) 17301800143115，交稿後隔月月底匯款。'
+      },
+      isDrawing: false, ctx: null
+    };
+  },
+  computed: {
+    subtotal() { return this.estimate.items.reduce((s, i) => s + (i.qty * i.price), 0); },
+    grandTotal() { return this.subtotal; }
+  },
+  mounted() {
+    if (new URLSearchParams(window.location.search).get('mode') !== 'client') {
+      try { const saved = JSON.parse(localStorage.getItem('quoteData') || 'null');
+        if (saved) { Object.assign(this, { topLogoUrl: saved.topLogoUrl||'', estimateLogoUrl: saved.estimateLogoUrl||'', headerRightLogoUrl: saved.headerRightLogoUrl||'' }); if (saved.estimate) this.estimate = saved.estimate; } } catch(e) {}
+      this.$watch(() => [this.estimate, this.topLogoUrl, this.estimateLogoUrl, this.headerRightLogoUrl], () => {
+        try { localStorage.setItem('quoteData', JSON.stringify({ estimate: this.estimate, topLogoUrl: this.topLogoUrl, estimateLogoUrl: this.estimateLogoUrl, headerRightLogoUrl: this.headerRightLogoUrl })); } catch(e) {}
+      }, { deep: true });
+    }
+    this.checkClientMode();
+    window.addEventListener('hashchange', this.checkClientMode);
+  },
+  beforeUnmount() {
+    window.removeEventListener('hashchange', this.checkClientMode);
+  },
+  methods: {
+    checkClientMode() {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('mode') === 'client') {
+        this.isClientMode = true;
+        this.isEditing = false;
+        this.currentView = 'estimate';
+        // 解析 Hash 資料
+        const hash = window.location.hash;
+        if (hash.startsWith('#data=')) {
+          try {
+            const decoded = decodeURIComponent(escape(atob(hash.substring(6))));
+            const data = JSON.parse(decoded);
+            if(data.estimate) this.estimate = data.estimate;
+            if(data.topLogoUrl) this.topLogoUrl = data.topLogoUrl;
+            if(data.estimateLogoUrl) this.estimateLogoUrl = data.estimateLogoUrl;
+            if(data.headerRightLogoUrl) this.headerRightLogoUrl = data.headerRightLogoUrl;
+          } catch(e) { console.error('Data parsing error', e); }
+        }
+      }
+    },
+    copyClientLink() {
+      const payload = JSON.stringify({ estimate: this.estimate, topLogoUrl: this.topLogoUrl, estimateLogoUrl: this.estimateLogoUrl, headerRightLogoUrl: this.headerRightLogoUrl });
+      const encoded = btoa(unescape(encodeURIComponent(payload)));
+      const url = `${window.location.origin}${window.location.pathname}?mode=client#data=${encoded}`;
+      
+      const done = () => { this.toastMsg = '✅ 已複製分享連結，貼給客戶即可查看並下載 PDF'; setTimeout(() => this.toastMsg = '', 3000); };
+      const fallback = () => { const el = document.createElement('textarea'); el.value = url; document.body.appendChild(el); el.select(); document.execCommand('copy'); document.body.removeChild(el); done(); };
+      if (navigator.share && /Mobi|Android|iPhone/i.test(navigator.userAgent)) {
+        navigator.share({ title: this.estimate.projectTitle || '報價單', url }).catch(() => {});
+      } else if (navigator.clipboard) { navigator.clipboard.writeText(url).then(done).catch(fallback); } else { fallback(); }
+    },
+    // FileReader 上傳共用處理
+    readImg(e, callback) {
+      if(e.target.files[0]) {
+        const reader = new FileReader();
+        reader.onload = ev => callback(ev.target.result);
+        reader.readAsDataURL(e.target.files[0]);
+      }
+    },
+    handleTopLogoUpload(e) { this.readImg(e, res => this.topLogoUrl = res); },
+    handleHeaderRightLogoUpload(e) { this.readImg(e, res => this.headerRightLogoUrl = res); },
+    handleEstimateLogoUpload(e) { this.readImg(e, res => this.estimateLogoUrl = res); },
+    handleSignImageUpload(e) { this.readImg(e, res => this.applySignData(res)); },
+    
+    // Canvas 手寫邏輯
+    openSignModal(target) {
+      this.activeSignTarget = target;
+      this.showSignModal = true;
+      this.$nextTick(() => {
+        const cvs = this.$refs.signCanvas;
+        if(cvs) {
+          cvs.width = cvs.offsetWidth; cvs.height = cvs.offsetHeight;
+          this.ctx = cvs.getContext('2d');
+          this.ctx.lineWidth = 2.5; this.ctx.lineCap = 'round';
+        }
+      });
+    },
+    getPos(e) {
+      const rect = e.target.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      return { x: clientX - rect.left, y: clientY - rect.top };
+    },
+    startDrawing(e) { this.isDrawing = true; const p = this.getPos(e); this.ctx.beginPath(); this.ctx.moveTo(p.x, p.y); },
+    startDrawingTouch(e) { e.preventDefault(); this.startDrawing(e); },
+    draw(e) { if(!this.isDrawing) return; const p = this.getPos(e); this.ctx.lineTo(p.x, p.y); this.ctx.stroke(); },
+    drawTouch(e) { e.preventDefault(); this.draw(e); },
+    stopDrawing() { this.isDrawing = false; },
+    clearCanvas() { this.ctx.clearRect(0, 0, this.$refs.signCanvas.width, this.$refs.signCanvas.height); },
+    saveCanvasSign() { this.applySignData(this.$refs.signCanvas.toDataURL()); },
+    applySignData(data) {
+      if(this.activeSignTarget === 'commissioner') this.estimate.commissionerSign = data;
+      if(this.activeSignTarget === 'company') this.estimate.companySign = data;
+      this.showSignModal = false;
+    },
+    
+    // 嚴格 PDF 下載 (保證一頁)
+    downloadA4PDF() {
+      const element = document.getElementById('pdf-container');
+      const opt = {
+        margin: 0,
+        filename: `${this.estimate.projectTitle || '報價單'}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, scrollY: 0 },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      };
+      
+      // 使用 promise 鏈強制刪除第二頁之後的所有空白頁
+      html2pdf().from(element).set(opt).toPdf().get('pdf').then((pdf) => {
+        const totalPages = pdf.internal.getNumberOfPages();
+        for (let i = totalPages; i > 1; i--) {
+          pdf.deletePage(i);
+        }
+      }).save();
+    }
+  }
+}).mount('#app');
+</script>
+</body>
+</html>
